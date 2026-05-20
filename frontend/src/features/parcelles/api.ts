@@ -266,6 +266,16 @@ export interface MessageItem {
   createdAt: string;
 }
 
+export interface PublicationItem {
+  _id: string;
+  author: AuthMeUser;
+  text: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  createdAt: string;
+}
+
 export const conseilsApi = {
   listConversations: async (): Promise<ConversationItem[]> => {
     const { data } = await authClient.get<ConversationItem[]>("/conseils/conversations");
@@ -275,12 +285,32 @@ export const conseilsApi = {
     const { data } = await authClient.get<AuthMeUser[]>("/conseils/experts");
     return data;
   },
+  getPublications: async (expertId: string): Promise<PublicationItem[]> => {
+    const { data } = await authClient.get<PublicationItem[]>(`/conseils/experts/${expertId}/publications`);
+    return data;
+  },
+  createPublication: async (payload: { text: string; fileUrl?: string; fileName?: string; fileType?: string }): Promise<PublicationItem> => {
+    const { data } = await authClient.post<PublicationItem>("/conseils/publications", payload);
+    return data;
+  },
+  deletePublication: async (id: string): Promise<{ success: boolean }> => {
+    const { data } = await authClient.delete<{ success: boolean }>(`/conseils/publications/${id}`);
+    return data;
+  },
   getMessages: async (conversationId: string): Promise<MessageItem[]> => {
     const { data } = await authClient.get<MessageItem[]>(`/conseils/conversations/${conversationId}/messages`);
     return data;
   },
   sendMessage: async (payload: { conversationId: string; text: string; fileUrl?: string; fileName?: string; fileType?: string }): Promise<MessageItem> => {
     const { data } = await authClient.post<MessageItem>("/conseils/messages", payload);
+    return data;
+  },
+  uploadFile: async (file: File): Promise<{ fileUrl: string; fileName: string; fileType: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const { data } = await authClient.post<{ fileUrl: string; fileName: string; fileType: string }>("/conseils/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
     return data;
   },
   initiate: async (advisorId: string): Promise<ConversationItem> => {

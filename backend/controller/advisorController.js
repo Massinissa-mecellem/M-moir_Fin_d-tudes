@@ -100,3 +100,92 @@ exports.getAllAdvisors = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+exports.uploadFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Aucun fichier n'a été fourni" });
+    }
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    return res.json({
+      fileUrl,
+      fileName: req.file.originalname,
+      fileType: req.file.mimetype
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+exports.createPublication = async (req, res) => {
+  try {
+    const { text, fileUrl, fileName, fileType } = req.body;
+    const author = req.auth.userId;
+
+    const Publication = require('../models/Publication');
+    const publication = new Publication({
+      author, text, fileUrl, fileName, fileType
+    });
+    await publication.save();
+
+    const conversations = await Conversation.find({ advisor: author });
+    const messageText = `📢 PUBLICATION:${publication._id}:${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`;
+
+    for (let conv of conversations) {
+      const message = new Message({
+        conversation: conv._id,
+        sender: author,
+        text: messageText
+      });
+      await message.save();
+
+      await Conversation.findByIdAndUpdate(conv._id, {
+        lastMessage: message._id,
+        updatedAt: Date.now()
+      });
+
+      req.io.to(conv._id.toString()).emit('message', message);
+    }
+
+    await publication.populate('author', 'nom prenom photo');
+
+    return res.status(201).json(publication);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getPublications = async (req, res) => {
+  try {
+    const { expertId } = req.params;
+    const Publication = require('../models/Publication');
+    const publications = await Publication.find({ author: expertId })
+      .populate('author', 'nom prenom photo')
+      .sort({ createdAt: -1 });
+    return res.json(publications);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+exports.deletePublication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.auth.userId;
+    const Publication = require('../models/Publication');
+
+    const publication = await Publication.findById(id);
+    if (!publication) {
+      return res.status(404).json({ error: "Publication non trouvée" });
+    }
+
+    if (publication.author.toString() !== userId) {
+      return res.status(403).json({ error: "Vous n'êtes pas autorisé à supprimer cette publication" });
+    }
+
+    await Publication.findByIdAndDelete(id);
+    return res.json({ success: true, message: "Publication supprimée avec succès" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};

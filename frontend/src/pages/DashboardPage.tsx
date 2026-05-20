@@ -190,13 +190,12 @@ const DashboardPage = () => {
     const isPositive = trend > 0;
     const isGood = isInverseGood ? !isPositive : isPositive;
     const colorClass = isGood ? "text-emerald-500" : "text-red-500";
-    const IconClass = isPositive ? "fi fi-rr-arrow-trend-up" : "fi fi-rr-arrow-trend-down";
     const absValue = Math.abs(trend);
     const text = Number.isInteger(absValue) ? absValue.toString() : absValue.toFixed(1) + "%";
 
     return (
       <span className={`flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isGood ? 'bg-emerald-500/10' : 'bg-red-500/10'} ${colorClass}`}>
-        <i className={`${IconClass} mr-1 mt-0.5`} />
+        {isPositive ? <TrendingUp className="size-3 mr-1" /> : <TrendingDown className="size-3 mr-1" />}
         {isPositive ? "+" : "-"}{text}
       </span>
     );
@@ -224,7 +223,7 @@ const DashboardPage = () => {
         <section className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             title="Total parcelles"
-            icon={<i className="fi fi-rr-leaf text-emerald-500" />}
+            icon={<Sprout className="size-6 text-emerald-500" />}
             iconBg="bg-emerald-500/10"
             value={loading ? null : `${stats?.activeParcelles ?? 0}`}
             trend={formatTrend(stats?.trendParcelles)}
@@ -232,7 +231,7 @@ const DashboardPage = () => {
           />
           <KpiCard
             title="NDVI moyen global"
-            icon={<i className="fi fi-rr-stats text-emerald-500" />}
+            icon={<Activity className="size-6 text-emerald-500" />}
             iconBg="bg-emerald-500/10"
             value={loading ? null : stats?.ndviGlobalAvg ? stats.ndviGlobalAvg.toFixed(2) : "—"}
             trend={formatTrend(stats?.trendNdvi)}
@@ -240,7 +239,7 @@ const DashboardPage = () => {
           />
           <KpiCard
             title="Stress hydrique"
-            icon={<i className="fi fi-rr-raindrops text-amber-500" />}
+            icon={<Droplets className="size-6 text-amber-500" />}
             iconBg="bg-amber-500/10"
             value={loading ? null : `${stats?.stressHydriqueCount ?? 0}`}
             trend={formatTrend(stats?.trendStressHydrique, true)}
@@ -248,7 +247,7 @@ const DashboardPage = () => {
           />
           <KpiCard
             title="Alertes actives"
-            icon={<i className="fi fi-rr-bell text-red-500" />}
+            icon={<Siren className="size-6 text-red-500" />}
             iconBg="bg-red-500/10"
             value={loading ? null : `${stats?.activeAlertsCount ?? 0}`}
             trend={formatTrend(stats?.trendAlerts, true)}

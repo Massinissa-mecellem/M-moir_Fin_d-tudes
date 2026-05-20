@@ -20,9 +20,13 @@ const { startStressWorker } = require('./services/stressWorker');
 
 const http = require('http');
 const socketIo = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const corsOrigin = process.env.FRONTEND_URL || true;
 

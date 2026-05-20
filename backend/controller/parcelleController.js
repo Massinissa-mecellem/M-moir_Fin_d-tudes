@@ -45,6 +45,26 @@ exports.createParcelle = async (req, res) => {
         if (Object.prototype.hasOwnProperty.call(payload, 'datePlantation')) {
             payload.datePlantation = sanitizeDatePlantation(payload.datePlantation);
         }
+
+        // Vérification des doublons : empêcher le même agriculteur de créer la même parcelle
+        const duplicateQuery = {
+            userId: payload.userId,
+            nom: payload.nom,
+            proprietaire: payload.proprietaire,
+            'geometry.coordinates': payload.geometry.coordinates
+        };
+        
+        if (payload.wilaya) {
+            duplicateQuery.wilaya = payload.wilaya;
+        }
+
+        const parcelleExistante = await Parcelle.findOne(duplicateQuery);
+        if (parcelleExistante) {
+            return res.status(400).json({ 
+                error: "Vous avez déjà créé cette parcelle avec ces mêmes coordonnées, ce nom et ce propriétaire." 
+            });
+        }
+
         const nouvelleParcelle = new Parcelle(payload);
         const saved = await nouvelleParcelle.save();
 

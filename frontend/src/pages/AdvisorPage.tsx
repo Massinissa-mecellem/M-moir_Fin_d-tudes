@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { conseilsApi, authApi, authClient, parcellesApi, type ConversationItem, type MessageItem, type AuthMeUser } from "@/features/parcelles/api";
+import { conseilsApi, authApi, authClient, parcellesApi, type ConversationItem, type MessageItem, type AuthMeUser, type PublicationItem } from "@/features/parcelles/api";
 import { io, Socket } from "socket.io-client";
 import {
   Search,
@@ -33,7 +33,9 @@ import {
   Sun,
   Moon,
   MapPin,
-  ArrowLeft
+  ArrowLeft,
+  Bell,
+  Trash2
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -60,6 +62,7 @@ const AdvisorPage = () => {
   const [selectedConv, setSelectedConv] = useState<ConversationItem | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [inputText, setInputText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [farmerParcelles, setFarmerParcelles] = useState<any[]>([]);
   const [selectedParcel, setSelectedParcel] = useState<any>(null);
   const [fullParcelDetails, setFullParcelDetails] = useState<ParcelleDetails | null>(null);
@@ -67,11 +70,18 @@ const AdvisorPage = () => {
   const [fullUser, setFullUser] = useState<AuthMeUser | null>(null);
 
   // State management
-  const [viewMode, setViewMode] = useState<'chat' | 'experts' | 'profile'>(user?.role === 'conseiller' ? 'chat' : 'experts');
+  const [viewMode, setViewMode] = useState<'chat' | 'experts' | 'profile'>(user?.role === 'conseiller' ? 'profile' : 'experts');
   const [allExperts, setAllExperts] = useState<AuthMeUser[]>([]);
+  const [publications, setPublications] = useState<PublicationItem[]>([]);
+  const [pubText, setPubText] = useState("");
+  const [pubFile, setPubFile] = useState<File | null>(null);
+  const pubFileInputRef = useRef<HTMLInputElement>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+
   const [filterSpecialty, setFilterSpecialty] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpert, setSelectedExpert] = useState<AuthMeUser | null>(null);
+  const [scrollToPubId, setScrollToPubId] = useState<string | null>(null);
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window !== "undefined") {
@@ -92,8 +102,9 @@ const AdvisorPage = () => {
   }, [theme]);
 
   const socketRef = useRef<Socket | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedConvRef = useRef<ConversationItem | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     selectedConvRef.current = selectedConv;
@@ -216,10 +227,11 @@ const AdvisorPage = () => {
   }, [selectedParcel?._id]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    // Add a small delay to allow images and DOM to render before scrolling
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  }, [messages, viewMode, selectedConv]);
 
   const loadAllExperts = async () => {
     try {
@@ -276,15 +288,72 @@ const AdvisorPage = () => {
     try {
       const data = await conseilsApi.listConversations();
       setConversations(data);
-      // Si on est un conseiller et qu'on n'a pas de conv sélectionnée, on prend la première
-      if (user?.role === 'conseiller' && data.length > 0 && !selectedConv) {
-        setSelectedConv(data[0]);
-      }
     } catch (err) {
       console.error("Failed to load conversations", err);
     }
   };
 
+  useEffect(() => {
+    const expertId = selectedExpert?._id || (viewMode === 'profile' && user?.role === 'conseiller' ? user.userId : null);
+    if (expertId) {
+      const loadPubs = async () => {
+        try {
+          const data = await conseilsApi.getPublications(expertId);
+          setPublications(data);
+        } catch (err) {
+          console.error("Failed to load publications", err);
+        }
+      };
+      loadPubs();
+    }
+  }, [selectedExpert, viewMode, user]);
+
+  useEffect(() => {
+    if (scrollToPubId && publications.length > 0) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`pub-${scrollToPubId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-4', 'ring-sky-500/50', 'ring-offset-2', 'transition-all', 'duration-1000');
+          setTimeout(() => el.classList.remove('ring-4', 'ring-sky-500/50', 'ring-offset-2'), 2000);
+          setScrollToPubId(null);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [publications, scrollToPubId]);
+
+  const handlePublish = async () => {
+    if (!pubText.trim() && !pubFile) return;
+    setIsPublishing(true);
+    try {
+      let fileData = undefined;
+      if (pubFile) {
+        fileData = await conseilsApi.uploadFile(pubFile);
+      }
+      const newPub = await conseilsApi.createPublication({
+        text: pubText,
+        ...fileData
+      });
+      setPublications([newPub, ...publications]);
+      setPubText("");
+      setPubFile(null);
+    } catch (err) {
+      console.error("Failed to publish", err);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleDeletePublication = async (pubId: string) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette publication ?")) return;
+    try {
+      await conseilsApi.deletePublication(pubId);
+      setPublications(prev => prev.filter(p => p._id !== pubId));
+    } catch (err) {
+      console.error("Failed to delete publication", err);
+    }
+  };
   const loadMessages = async (id: string) => {
     try {
       const data = await conseilsApi.getMessages(id);
@@ -295,14 +364,21 @@ const AdvisorPage = () => {
   };
 
   const handleSend = async () => {
-    if (!inputText.trim() || !selectedConv) return;
+    if ((!inputText.trim() && !selectedFile) || !selectedConv) return;
 
     try {
+      let fileData = undefined;
+      if (selectedFile) {
+        fileData = await conseilsApi.uploadFile(selectedFile);
+      }
+
       await conseilsApi.sendMessage({
         conversationId: selectedConv._id,
-        text: inputText
+        text: inputText,
+        ...fileData
       });
       setInputText("");
+      setSelectedFile(null);
     } catch (err) {
       console.error("Failed to send message", err);
     }
@@ -761,53 +837,111 @@ const AdvisorPage = () => {
                       <h3 className="text-sm font-black uppercase tracking-widest text-primary mb-4 flex items-center gap-2">
                         <Send className="size-4" /> Publier un conseil
                       </h3>
+                      {pubFile && (
+                        <div className="mb-4 flex items-center gap-3 p-3 bg-muted rounded-2xl w-fit border relative pr-10">
+                          <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 size-6 rounded-full bg-red-500 hover:bg-red-600 text-white" onClick={() => setPubFile(null)}>
+                            <X className="size-3" />
+                          </Button>
+                          <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            {pubFile.type.startsWith('image/') ? <Camera className="size-5" /> : <FileText className="size-5" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold truncate max-w-[200px]">{pubFile.name}</p>
+                            <p className="text-[10px] text-muted-foreground font-medium">{(pubFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                      )}
                       <textarea
+                        value={pubText}
+                        onChange={(e) => setPubText(e.target.value)}
                         placeholder="Partagez votre expertise avec la communauté..."
                         className="w-full bg-muted/30 border-none focus:ring-0 rounded-2xl p-4 min-h-[120px] text-sm font-medium resize-none mb-4"
                       />
                       <div className="flex items-center justify-between">
                         <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" className="rounded-xl text-primary hover:bg-primary/10">
+                          <input type="file" hidden ref={pubFileInputRef} onChange={(e) => { if (e.target.files?.[0]) setPubFile(e.target.files[0]); }} accept="image/*,.pdf,.csv" />
+                          <Button variant="ghost" size="icon" className="rounded-xl text-primary hover:bg-primary/10" onClick={() => pubFileInputRef.current?.click()}>
                             <Paperclip className="size-5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="rounded-xl text-primary hover:bg-primary/10">
-                            <Map className="size-5" />
-                          </Button>
                         </div>
-                        <Button className="rounded-2xl bg-primary px-8 font-black shadow-lg shadow-primary/20">
-                          Publier
+                        <Button 
+                          className="rounded-2xl bg-primary px-8 font-black shadow-lg shadow-primary/20"
+                          onClick={handlePublish}
+                          disabled={isPublishing || (!pubText.trim() && !pubFile)}
+                        >
+                          {isPublishing ? "Publication..." : "Publier"}
                         </Button>
                       </div>
                     </div>
                   )}
 
-                  {/* Feed Mock */}
+                  {/* Feed des Publications */}
                   <div className="space-y-6">
                     <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground ml-4">Vos dernières publications</h3>
 
-                    <div className="p-6 rounded-[32px] bg-card/40 border border-border/50 space-y-4 hover:bg-card transition-colors duration-300">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="size-10 border-2 border-primary/20">
-                          <AvatarImage src={getPhotoUrl(selectedExpert || fullUser)} />
-                          <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                            {(selectedExpert || fullUser)?.nom?.[0] || "?"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-bold">
-                            {(selectedExpert || fullUser)?.nom} {(selectedExpert || fullUser)?.prenom}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground font-bold">Il y a 2 heures</p>
+                    {publications.length === 0 ? (
+                      <div className="text-center p-8 text-muted-foreground text-sm font-bold bg-card/20 rounded-3xl border border-dashed">
+                        Aucune publication pour le moment.
+                      </div>
+                    ) : (
+                      publications.map((pub) => (
+                        <div key={pub._id} id={`pub-${pub._id}`} className="p-6 rounded-[32px] bg-card border border-border/50 space-y-4 shadow-sm hover:shadow-md transition-all duration-300">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="size-10 border-2 border-primary/20">
+                                <AvatarImage src={pub.author?.photo} />
+                                <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                                  {pub.author?.nom?.[0] || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-bold">
+                                  {pub.author?.nom} {pub.author?.prenom}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">{formatDate(pub.createdAt)} à {format(new Date(pub.createdAt), 'HH:mm')}</p>
+                              </div>
+                            </div>
+
+                            {pub.author?._id === user?.userId && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="rounded-xl text-red-500 hover:text-red-600 hover:bg-red-500/10 transition-colors h-9 w-9 shrink-0"
+                                onClick={() => handleDeletePublication(pub._id)}
+                                title="Supprimer la publication"
+                              >
+                                <Trash2 className="size-4.5" />
+                              </Button>
+                            )}
+                          </div>
+                          {pub.text && (
+                            <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                              {pub.text}
+                            </p>
+                          )}
+                          {pub.fileUrl && (
+                            pub.fileType?.startsWith('image/') ? (
+                              <div className="w-full overflow-hidden rounded-2xl border border-border/50 mt-4">
+                                <a href={pub.fileUrl} target="_blank" rel="noreferrer">
+                                  <img src={pub.fileUrl} alt={pub.fileName} className="w-full max-h-96 object-cover" />
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="mt-4 p-3 rounded-2xl flex items-center gap-3 border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer w-fit pr-6">
+                                <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                                  <FileText className="size-5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold truncate max-w-[200px]">{pub.fileName}</p>
+                                  <p className="text-[10px] text-muted-foreground">Document joint</p>
+                                </div>
+                                <a href={pub.fileUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-primary ml-2">Télécharger</a>
+                              </div>
+                            )
+                          )}
                         </div>
-                      </div>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        Il est important de surveiller l'indice NDWI pendant cette période de chaleur intense.
-                        N'hésitez pas à augmenter la fréquence d'irrigation sur les parcelles de blé pour éviter le stress hydrique.
-                      </p>
-                      <div className="h-48 w-full bg-muted/20 rounded-2xl border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground/40 italic group hover:bg-muted/30 transition-all">
-                        [ Espace Image Publication ]
-                      </div>
-                    </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -859,7 +993,7 @@ const AdvisorPage = () => {
                   </div>
                 </div>
 
-                <ScrollArea className="flex-1 p-6 bg-muted/10" ref={scrollRef}>
+                <ScrollArea className="flex-1 p-6 bg-muted/10">
                   <div className="flex flex-col gap-6 max-w-4xl mx-auto">
                     {messages.map((msg, idx) => {
                       const isMe = msg.sender === user?.userId;
@@ -962,23 +1096,66 @@ const AdvisorPage = () => {
                                   Voir l'analyse complète
                                 </Button>
                               </div>
+                            ) : msg.text.startsWith("📢 PUBLICATION:") ? (
+                              <div className={cn(
+                                "p-3 rounded-2xl border flex flex-col gap-2 min-w-[200px]",
+                                isMe ? "bg-white/10 border-white/20" : "bg-sky-500/5 border-sky-500/20"
+                              )}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="size-8 rounded-xl bg-sky-500/20 flex items-center justify-center">
+                                    <Bell className="size-4 text-sky-600" />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Nouvelle Publication</p>
+                                  </div>
+                                </div>
+                                <p className="text-sm font-medium italic opacity-90 truncate max-w-[220px]">
+                                  "{msg.text.split(":")[2]}"
+                                </p>
+                                {user?.role === 'agriculteur' && (
+                                  <Button 
+                                    variant="secondary" 
+                                    size="sm" 
+                                    className="w-full rounded-xl h-8 mt-1 text-[10px] font-black uppercase bg-sky-500 text-white hover:bg-sky-600 border-none shadow-sm shadow-sky-500/20"
+                                    onClick={() => {
+                                      const pubId = msg.text.split(":")[1];
+                                      if (selectedConv?.advisor) {
+                                        // Changer vers le profil du conseiller
+                                        setSelectedExpert(selectedConv.advisor);
+                                        setViewMode('profile');
+                                        setScrollToPubId(pubId);
+                                      }
+                                    }}
+                                  >
+                                    Voir la publication
+                                  </Button>
+                                )}
+                              </div>
                             ) : (
                               msg.text
                             )}
                             {msg.fileUrl && (
-                              <div className={cn(
-                                "mt-3 p-3 rounded-2xl flex items-center gap-3 border transition-colors cursor-pointer",
-                                isMe ? "bg-black/20 border-white/10 hover:bg-black/30" : "bg-muted/50 border-border hover:bg-muted"
-                              )}>
-                                <div className="size-10 rounded-xl bg-background/20 flex items-center justify-center shrink-0">
-                                  <FileText className="size-5" />
+                              msg.fileType?.startsWith('image/') ? (
+                                <div className="mt-3 overflow-hidden rounded-2xl border border-border/50">
+                                  <a href={msg.fileUrl} target="_blank" rel="noreferrer">
+                                    <img src={msg.fileUrl} alt={msg.fileName} className="max-w-full max-h-64 object-cover" />
+                                  </a>
                                 </div>
-                                <div className="flex-1 min-w-0 overflow-hidden">
-                                  <p className="text-xs font-bold truncate">{msg.fileName || "Document"}</p>
-                                  <p className="text-[10px] opacity-70">PDF · 1.2 MB</p>
+                              ) : (
+                                <div className={cn(
+                                  "mt-3 p-3 rounded-2xl flex items-center gap-3 border transition-colors cursor-pointer",
+                                  isMe ? "bg-black/20 border-white/10 hover:bg-black/30" : "bg-muted/50 border-border hover:bg-muted"
+                                )}>
+                                  <div className="size-10 rounded-xl bg-background/20 flex items-center justify-center shrink-0">
+                                    <FileText className="size-5" />
+                                  </div>
+                                  <div className="flex-1 min-w-0 overflow-hidden">
+                                    <p className="text-xs font-bold truncate">{msg.fileName || "Document"}</p>
+                                    <p className="text-[10px] opacity-70">Document joint</p>
+                                  </div>
+                                  <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="text-xs font-black underline p-2">VOIR</a>
                                 </div>
-                                <a href={msg.fileUrl} target="_blank" rel="noreferrer" className="text-xs font-black underline p-2">VOIR</a>
-                              </div>
+                              )
                             )}
                           </div>
                           <span className="text-[10px] font-bold text-muted-foreground px-2 uppercase tracking-tighter">
@@ -987,12 +1164,28 @@ const AdvisorPage = () => {
                         </div>
                       );
                     })}
+                    <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
 
                 <div className="p-6 border-t bg-card/50 backdrop-blur-md">
+                  {selectedFile && (
+                    <div className="mb-4 flex items-center gap-3 p-3 bg-card rounded-2xl w-fit border shadow-sm relative pr-10 animate-fade-in-up">
+                      <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 size-6 rounded-full bg-red-500 hover:bg-red-600 text-white border-2 border-background" onClick={() => setSelectedFile(null)}>
+                        <X className="size-3" />
+                      </Button>
+                      <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        {selectedFile.type.startsWith('image/') ? <Camera className="size-5" /> : <FileText className="size-5" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold truncate max-w-[200px]">{selectedFile.name}</p>
+                        <p className="text-[10px] text-muted-foreground font-medium">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 max-w-4xl mx-auto bg-muted/50 p-2 rounded-[30px] border border-border/50 shadow-inner">
-                    <Button variant="ghost" size="icon" className="shrink-0 rounded-full hover:bg-primary/10 hover:text-primary transition-colors h-11 w-11">
+                    <input type="file" hidden ref={fileInputRef} onChange={(e) => { if (e.target.files?.[0]) setSelectedFile(e.target.files[0]); }} accept="image/*,.pdf,.csv" />
+                    <Button variant="ghost" size="icon" className="shrink-0 rounded-full hover:bg-primary/10 hover:text-primary transition-colors h-11 w-11" onClick={() => fileInputRef.current?.click()}>
                       <Paperclip className="size-5" />
                     </Button>
                     {user?.role === 'agriculteur' && selectedParcel && (
