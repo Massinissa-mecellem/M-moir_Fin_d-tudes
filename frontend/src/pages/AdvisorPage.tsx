@@ -7,7 +7,6 @@ import {
   Search,
   Send,
   FileText,
-  Video,
   User,
   Map,
   Activity,
@@ -15,7 +14,6 @@ import {
   AlertTriangle,
   Paperclip,
   MoreVertical,
-  Phone,
   LineChart,
   Calendar,
   Sprout,
@@ -35,7 +33,8 @@ import {
   MapPin,
   ArrowLeft,
   Bell,
-  Trash2
+  Trash2,
+  Sparkles
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -82,6 +81,55 @@ const AdvisorPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedExpert, setSelectedExpert] = useState<AuthMeUser | null>(null);
   const [scrollToPubId, setScrollToPubId] = useState<string | null>(null);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+
+  const quickReplies = user?.role === 'conseiller' ? [
+    {
+      title: "💧 Stress Hydrique (NDWI faible)",
+      text: "L'indice d'hydratation NDWI montre un stress hydrique prononcé sur votre parcelle. Je vous conseille vivement d'augmenter le volume d'irrigation de 20% sur les prochaines 48 heures, de préférence tôt le matin ou après le coucher du soleil."
+    },
+    {
+      title: "🌱 Carence Azotée (NDVI faible)",
+      text: "D'après les analyses d'indices NDVI de vigueur, vos cultures présentent des signes de baisse d'activité chlorophyllienne. Un apport ciblé d'engrais azoté à libération rapide aidera à stimuler la croissance. Suivons l'évolution d'ici 10 jours."
+    },
+    {
+      title: "🌾 Analyse des Sols & PH",
+      text: "Pour optimiser l'assimilation des nutriments, un amendement calcique (chaux) ou organique sera bénéfique selon l'historique de votre sol. Je vous propose de réaliser une analyse physico-chimique rapide de terre pour affiner le dosage."
+    },
+    {
+      title: "🍂 Risque de Maladie (Mildiou)",
+      text: "Le taux d'humidité foliaire combiné aux températures actuelles favorise le développement de maladies cryptogamiques. Limitez l'irrigation par aspersion et appliquez un traitement préventif homologué dès la première accalmie."
+    },
+    {
+      title: "☀️ Stress Thermique (Canicule)",
+      text: "En raison des fortes chaleurs annoncées, vos cultures risquent un arrêt de croissance. Privilégiez un bassinage léger en fin de journée pour rafraîchir le feuillage et maintenez le sol paillé pour préserver l'humidité."
+    },
+    {
+      title: "📨 Analyse en Cours",
+      text: "Bonjour ! J'ai bien reçu les coordonnées et les données de votre parcelle. Je lance l'analyse des séries temporelles Sentinel-2 et je reviens vers vous avec mes conclusions et mes recommandations très rapidement."
+    }
+  ] : [
+    {
+      title: "🌾 Demande de Diagnostic",
+      text: "Bonjour ! J'ai partagé les données de ma parcelle ci-dessus. Pourriez-vous analyser les indices NDVI/NDWI récents de Sentinel-2 pour vérifier l'état général et m'indiquer s'il y a des anomalies ?"
+    },
+    {
+      title: "💧 Conseil d'Irrigation",
+      text: "Bonjour ! J'ai l'impression que mes cultures manquent d'eau sur certaines zones de ma parcelle. Quel volume d'eau et quelle fréquence me recommandez-vous par rapport aux prévisions météo ?"
+    },
+    {
+      title: "🍂 Problème de Feuilles / Maladies",
+      text: "Bonjour ! J'observe des taches suspectes et un jaunissement anormal sur les feuilles de ma culture. Est-ce le signe d'une maladie fongique (mildiou) ou d'une carence en nutriments ?"
+    },
+    {
+      title: "🌱 Choix d'Engrais",
+      text: "Bonjour ! Suite à mes dernières récoltes, je souhaite préparer le sol au mieux pour la prochaine saison. Quels types d'engrais ou d'amendements me conseillez-vous d'apporter en priorité ?"
+    },
+    {
+      title: "🤝 Salutations & Remerciements",
+      text: "Bonjour ! Merci infiniment pour votre réactivité et pour ces précieux conseils d'expert. Je vais appliquer vos recommandations dès aujourd'hui et je vous tiens informé de l'évolution."
+    }
+  ];
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window !== "undefined") {
@@ -399,30 +447,7 @@ const AdvisorPage = () => {
     }
   };
 
-  const handleCall = async (type: 'audio' | 'video') => {
-    if (!selectedConv) return;
-    
-    const roomId = `M-moir-${type}-${selectedConv._id}`;
-    const callerName = `${fullUser?.nom} ${fullUser?.prenom}`;
-    const inviteText = `📢 CALL_INVITE:${type}:${roomId}:${callerName}`;
-    
-    try {
-      // Envoyer l'invitation dans le chat
-      await conseilsApi.sendMessage({
-        conversationId: selectedConv._id,
-        text: inviteText
-      });
-      
-      // Ouvrir la salle pour l'appelant
-      const url = type === 'audio' 
-        ? `https://meet.jit.si/${roomId}#config.startWithVideoMuted=true`
-        : `https://meet.jit.si/${roomId}`;
-        
-      window.open(url, '_blank');
-    } catch (err) {
-      console.error("Failed to send call invitation", err);
-    }
-  };
+
 
   const getOtherUser = (conv: ConversationItem): { nom: string; prenom: string; photo: string; telephone?: string } => {
     if (!conv) return { nom: "Utilisateur", prenom: "", photo: "", telephone: "" };
@@ -972,23 +997,6 @@ const AdvisorPage = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      onClick={() => handleCall('audio')}
-                      className="rounded-xl border-primary/20 text-primary hover:bg-primary/5 shadow-sm"
-                    >
-                      <Phone className="size-5" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      onClick={() => handleCall('video')}
-                      className="rounded-xl border-primary/20 text-primary hover:bg-primary/5 shadow-sm"
-                    >
-                      <Video className="size-5" />
-                    </Button>
-                    <Separator orientation="vertical" className="h-8 mx-2" />
                     <Button variant="ghost" size="icon" className="rounded-xl"><MoreVertical className="size-5" /></Button>
                   </div>
                 </div>
@@ -1014,45 +1022,8 @@ const AdvisorPage = () => {
                             )}
                           >
                              {msg.text.startsWith("📢 CALL_INVITE:") ? (
-                              <div className={cn(
-                                "p-4 rounded-2xl border flex flex-col gap-3 min-w-[240px]",
-                                isMe ? "bg-white/10 border-white/20" : "bg-primary/5 border-primary/20"
-                              )}>
-                                <div className="flex items-center gap-3">
-                                  <div className={cn(
-                                    "size-10 rounded-2xl flex items-center justify-center animate-pulse",
-                                    msg.text.split(":")[1] === 'video' ? "bg-purple-500/20 text-purple-600" : "bg-blue-500/20 text-blue-600"
-                                  )}>
-                                    {msg.text.split(":")[1] === 'video' ? <Video className="size-5" /> : <Phone className="size-5" />}
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60">
-                                      {msg.text.split(":")[1] === 'video' ? "Appel Vidéo" : "Appel Audio"}
-                                    </p>
-                                    <p className="text-sm font-bold truncate">
-                                      {isMe ? "Appel lancé..." : `Appel de ${msg.text.split(":")[3]}`}
-                                    </p>
-                                  </div>
-                                </div>
-                                <Button 
-                                  variant={isMe ? "outline" : "default"}
-                                  size="sm" 
-                                  className={cn(
-                                    "w-full rounded-xl font-bold h-10",
-                                    !isMe && "bg-emerald-500 hover:bg-emerald-600 text-white border-none shadow-lg shadow-emerald-500/20"
-                                  )}
-                                  onClick={() => {
-                                    const parts = msg.text.split(":");
-                                    const roomId = parts[2];
-                                    const type = parts[1];
-                                    const url = type === 'audio' 
-                                      ? `https://meet.jit.si/${roomId}#config.startWithVideoMuted=true`
-                                      : `https://meet.jit.si/${roomId}`;
-                                    window.open(url, '_blank');
-                                  }}
-                                >
-                                  {isMe ? "Rejoindre à nouveau" : "Décrocher / Rejoindre"}
-                                </Button>
+                              <div className="p-3 bg-muted/50 rounded-2xl text-xs text-muted-foreground italic">
+                                Appel (désactivé)
                               </div>
                             ) : msg.text.startsWith("📢 CONTEXT_PARCEL:") ? (
                               <div className={cn(
@@ -1169,6 +1140,38 @@ const AdvisorPage = () => {
                 </ScrollArea>
 
                 <div className="p-6 border-t bg-card/50 backdrop-blur-md">
+                  {showQuickReplies && (
+                    <div className="max-w-4xl mx-auto mb-3 p-4 rounded-3xl bg-card border shadow-2xl space-y-3 z-30 relative border-primary/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-1.5">
+                          <Sparkles className="size-4 text-amber-500 fill-amber-500" /> {user?.role === 'conseiller' ? "Réponses prêtes à l'emploi (Conseiller)" : "Questions rapides (Agriculteur)"}
+                        </span>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="size-6 rounded-full hover:bg-muted" 
+                          onClick={() => setShowQuickReplies(false)}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                        {quickReplies.map((reply, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setInputText(reply.text);
+                              setShowQuickReplies(false);
+                            }}
+                            className="text-left p-3 rounded-2xl bg-muted/30 hover:bg-primary/5 hover:text-primary border hover:border-primary/20 transition-all text-xs font-semibold space-y-1 group"
+                          >
+                            <p className="font-bold text-foreground group-hover:text-primary truncate">{reply.title}</p>
+                            <p className="text-[10px] text-muted-foreground line-clamp-2">{reply.text}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {selectedFile && (
                     <div className="mb-4 flex items-center gap-3 p-3 bg-card rounded-2xl w-fit border shadow-sm relative pr-10 animate-fade-in-up">
                       <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 size-6 rounded-full bg-red-500 hover:bg-red-600 text-white border-2 border-background" onClick={() => setSelectedFile(null)}>
@@ -1199,6 +1202,18 @@ const AdvisorPage = () => {
                         <Activity className="size-5" />
                       </Button>
                     )}
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setShowQuickReplies(prev => !prev)}
+                      className={cn(
+                        "shrink-0 rounded-full transition-colors h-11 w-11",
+                        showQuickReplies ? "bg-primary/20 text-primary" : "hover:bg-primary/10 hover:text-primary"
+                      )}
+                      title="Messages rapides"
+                    >
+                      <Sparkles className="size-5" />
+                    </Button>
                     <Input
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}

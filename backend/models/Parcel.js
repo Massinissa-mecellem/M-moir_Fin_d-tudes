@@ -6,6 +6,9 @@ const parcelleSchema = new mongoose.Schema({
     proprietaire: { type: String, required: true }, // Nom affiché du propriétaire
     cultureType: String,
     datePlantation: { type: Date }, // Début du cycle phénologique
+    cultureEstimatedStage: { type: String, default: 'auto' }, // 'auto', 'germination', 'vegetative', etc.
+    cultureAgeYears: { type: Number, default: 0 },
+    treeDensity: { type: Number, default: 0 },
     status: {
         type: String,
         enum: ['ok', 'warning', 'critical'],

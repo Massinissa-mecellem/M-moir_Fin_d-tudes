@@ -3,6 +3,7 @@ const Parcelle = require('../models/Parcel');
 const Alerte = require('../models/Alert');
 const { sendAlertNotification, sendCriticalAlertNotification } = require('./pushService');
 const { getParcelleWeather } = require('./weatherService');
+const cropCycleEngine = require('./cropCycleEngine');
 
 const toPercent = (value) => `${(value * 100).toFixed(1)}%`;
 const INDICES_STABILITY_THRESHOLD = Number(process.env.INDICES_STABILITY_THRESHOLD || 0.05);
@@ -330,15 +331,29 @@ const analyzeStress = async (parcelleId) => {
     const saviDropRatio = previous.savi > 0 ? (previous.savi - current.savi) / previous.savi : 0;
     const gndviDropRatio = previous.gndvi > 0 ? (previous.gndvi - current.gndvi) / previous.gndvi : 0;
 
-    const ndviCritical = current.ndvi < 0.3 || ndviDropRatio >= 0.25;
-    const ndwiCritical = current.ndwi < 0.1 || ndwiDropRatio >= 0.25;
+    // Calcul phénologique et diagnostic dynamique
+    const phenology = cropCycleEngine.calculateCurrentStage(
+        parcelle.cultureType,
+        parcelle.datePlantation,
+        parcelle.cultureAgeYears,
+        parcelle.treeDensity
+    );
+    const diag = cropCycleEngine.generateDiagnostic(
+        parcelle.cultureType,
+        phenology,
+        current.ndvi,
+        current.ndwi
+    );
+
+    const ndviCritical = diag.status === 'critical' || ndviDropRatio >= 0.25;
+    const ndwiCritical = current.ndwi < phenology.expectedNdwiRange[0] || ndwiDropRatio >= 0.25;
     const saviCritical = current.savi < 0.2 || saviDropRatio >= 0.25;
     const gndviCritical = current.gndvi < 0.25 || gndviDropRatio >= 0.25;
 
     let nextStatus = 'ok';
     const createdAlerts = [];
     const criticalAlerts = [];
-    const report = buildIndicesReport(current, previous);
+    const report = diag.text || buildIndicesReport(current, previous);
 
     const updateAlert = await Alerte.create({
         parcelleId: parcelle._id,

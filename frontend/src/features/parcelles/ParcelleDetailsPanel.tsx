@@ -26,6 +26,7 @@ import { NdviChart } from "./NdviChart";
 import { formatDate, formatHa, formatNumber, polygonAreaHa } from "./utils";
 import type { ParcelleDetails, ParcelleMeteo } from "./types";
 import { downloadParcelleCsv, downloadParcellePdf, PANEL_PDF_CHART_ID } from "./exportReports";
+import { YieldEstimation } from "./YieldEstimation";
 
 interface Props {
   details: ParcelleDetails | null;
@@ -180,6 +181,88 @@ export const ParcelleDetailsPanel = ({ details, loading, onClose, meteo }: Props
 
               <Separator />
 
+              {/* Modélisation de Cycle Phénologique ou Arboriculture */}
+              {details.info.phenology && (
+                <div className="rounded-xl border border-border bg-gradient-to-br from-background via-background to-emerald-500/[0.03] p-4 shadow-sm animate-fade-in-up">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sprout className="size-4 text-emerald-500 animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                      {details.info.phenology.isTree ? "Modélisation Arboriculture" : "Cycle Phénologique Actif"}
+                    </span>
+                  </div>
+
+                  {details.info.phenology.isTree ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs border-b pb-2 border-border/60">
+                        <span className="text-muted-foreground">Âge du verger</span>
+                        <span className="font-semibold text-foreground">{details.info.phenology.meta?.ageLabel ?? `${details.info.cultureAgeYears} ans`}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs border-b pb-2 border-border/60">
+                        <span className="text-muted-foreground">Densité de plantation</span>
+                        <span className="font-semibold text-foreground">{details.info.phenology.meta?.densityLabel ?? `${details.info.treeDensity} arbres/ha`}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs border-b pb-2 border-border/60">
+                        <span className="text-muted-foreground">Saison phénologique</span>
+                        <span className="font-semibold text-primary">{details.info.phenology.meta?.seasonLabel ?? details.info.phenology.stageLabel}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed pt-1">
+                        {details.info.phenology.description}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Progress track */}
+                      <div className="relative pt-2 pb-6">
+                        <div className="absolute left-0 right-0 top-4 h-1 bg-secondary rounded-full">
+                          <div 
+                            className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-500" 
+                            style={{ width: `${details.info.phenology.progressPercent}%` }} 
+                          />
+                        </div>
+                        
+                        {/* Nodes for each of the 5 standard stages */}
+                        <div className="absolute left-0 right-0 top-2 flex justify-between px-1 pointer-events-none">
+                          {["germination", "vegetative", "flowering", "maturation", "harvest"].map((stg, i) => {
+                            const isActive = details.info.phenology?.currentStage === stg;
+                            const isPast = ["germination", "vegetative", "flowering", "maturation", "harvest"].indexOf(details.info.phenology?.currentStage ?? "") >= i;
+                            
+                            return (
+                              <div key={stg} className="flex flex-col items-center relative">
+                                <div 
+                                  className={`size-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                                    isActive 
+                                      ? 'bg-emerald-500 border-primary scale-125 shadow-md shadow-emerald-500/50' 
+                                      : isPast 
+                                        ? 'bg-emerald-400 border-emerald-500' 
+                                        : 'bg-card border-muted'
+                                  }`}
+                                >
+                                  {isActive && <div className="size-1 bg-white rounded-full" />}
+                                </div>
+                                <span 
+                                  className={`absolute mt-5 text-[8px] font-bold uppercase tracking-wider text-center max-w-[60px] leading-tight ${
+                                    isActive ? 'text-primary scale-105' : 'text-muted-foreground opacity-60'
+                                  }`}
+                                >
+                                  {stg === "germination" ? "Germin." : stg === "vegetative" ? "Végét." : stg === "flowering" ? "Floraison" : stg === "maturation" ? "Matur." : "Récolte"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 text-xs leading-relaxed text-muted-foreground border-t border-border/60 mt-3">
+                        <span className="font-semibold text-foreground">{details.info.phenology.stageLabel} : </span>
+                        {details.info.phenology.description}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Separator />
+
               {/* Indices */}
               <div>
                 <h3 className="mb-3 text-sm font-semibold tracking-tight">
@@ -288,49 +371,115 @@ export const ParcelleDetailsPanel = ({ details, loading, onClose, meteo }: Props
                 </div>
               </div>
 
-              {/* Interpretation */}
-              <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs leading-relaxed text-muted-foreground shadow-inner">
-                <div className="flex items-center gap-2 mb-2">
-                   <div className="size-2 rounded-full bg-primary animate-pulse" />
-                   <strong className="font-bold text-foreground uppercase tracking-wider text-[10px]">Analyse de vigueur</strong>
-                </div>
-                <div className="space-y-2">
-                  <p>
-                    {(() => {
-                      const ndvi = ndviAvg ?? 0;
-                      const ndwi = ndwiAvg ?? 0;
-                      const name = details.info.nom;
-                      const culture = details.info.cultureType?.toLowerCase() || "la culture";
-                      
-                      if (ndvi === 0 && ndwi === 0) return "En attente de données satellitaires pour cette parcelle.";
-                      
-                      let analysis = `Sur la base des dernières données, **${name}** montre `;
-                      
-                      if (ndvi > 0.6) {
-                        analysis += `une végétation très dense et vigoureuse pour ${culture}. `;
-                      } else if (ndvi > 0.4) {
-                        analysis += `une vigueur satisfaisante, typique d'un stade de croissance actif. `;
-                      } else if (ndvi > 0.2) {
-                        analysis += `une activité chlorophyllienne modérée, ce qui peut indiquer une levée précoce ou un léger ralentissement de croissance. `;
-                      } else {
-                        analysis += `un indice de vigueur faible (NDVI < 0.2). `;
-                      }
+              {/* Estimation du Rendement Agricole */}
+              {details.info.cultureType && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold tracking-tight">
+                      Estimation du rendement
+                    </h3>
+                    <YieldEstimation
+                      ndvi={ndviAvg}
+                      ndwi={ndwiAvg}
+                      surface={surface}
+                      culture={details.info.cultureType}
+                      stade={details.info.phenology?.currentStage ?? details.info.cultureEstimatedStage ?? ""}
+                    />
+                  </div>
+                </>
+              )}
 
-                      if (ndwi < 0.1) {
-                        analysis += `Attention : un stress hydrique est détecté (NDWI faible), une irrigation d'appoint est recommandée. `;
-                      } else if (ndwi > 0.3) {
-                        analysis += `Le taux d'humidité foliaire est optimal. `;
-                      }
+              <Separator />
 
-                      if (saviAvg && saviAvg < 0.15) {
-                        analysis += `Le sol semble très exposé, surveillez l'érosion ou le manque de couverture végétale. `;
-                      }
+              {/* Diagnostic Agronomique */}
+              {details.info.diagnostic ? (
+                <div className={`rounded-xl border p-4 text-xs leading-relaxed shadow-sm transition-all duration-300 ${
+                  details.info.diagnostic.status === 'critical'
+                    ? 'border-red-500/20 bg-red-500/[0.03] text-red-900 dark:text-red-200 animate-pulse'
+                    : details.info.diagnostic.status === 'warning'
+                      ? 'border-amber-500/20 bg-amber-500/[0.03] text-amber-900 dark:text-amber-200'
+                      : 'border-emerald-500/20 bg-emerald-500/[0.02] text-emerald-900 dark:text-emerald-200'
+                }`}>
+                  <div className="flex items-center justify-between mb-3 border-b pb-2 border-current/10">
+                    <div className="flex items-center gap-1.5">
+                      <div className={`size-2.5 rounded-full ${
+                        details.info.diagnostic.status === 'critical'
+                          ? 'bg-red-500 animate-ping'
+                          : details.info.diagnostic.status === 'warning'
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                      }`} />
+                      <strong className="font-bold uppercase tracking-wider text-[10px]">
+                        Diagnostic Agronomique
+                      </strong>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest ${
+                      details.info.diagnostic.status === 'critical'
+                        ? 'bg-red-500/10 text-red-500'
+                        : details.info.diagnostic.status === 'warning'
+                          ? 'bg-amber-500/10 text-amber-500'
+                          : 'bg-emerald-500/10 text-emerald-500'
+                    }`}>
+                      {details.info.diagnostic.statusLabel}
+                    </span>
+                  </div>
 
-                      return analysis;
-                    })()}
+                  <p className="font-medium text-foreground mb-3">
+                    {details.info.diagnostic.text}
                   </p>
+
+                  {details.info.phenology?.advice && (
+                    <div className="rounded-lg bg-card/60 p-2.5 border border-current/5 space-y-1 mt-2 text-muted-foreground">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-foreground">Conseil de saison</div>
+                      <p className="text-[11px] leading-relaxed">{details.info.phenology.advice}</p>
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-lg border border-border bg-muted/40 p-4 text-xs leading-relaxed text-muted-foreground shadow-inner">
+                  <div className="flex items-center gap-2 mb-2">
+                     <div className="size-2 rounded-full bg-primary animate-pulse" />
+                     <strong className="font-bold text-foreground uppercase tracking-wider text-[10px]">Analyse de vigueur</strong>
+                  </div>
+                  <div className="space-y-2">
+                    <p>
+                      {(() => {
+                        const ndvi = ndviAvg ?? 0;
+                        const ndwi = ndwiAvg ?? 0;
+                        const name = details.info.nom;
+                        const culture = details.info.cultureType?.toLowerCase() || "la culture";
+                        
+                        if (ndvi === 0 && ndwi === 0) return "En attente de données satellitaires pour cette parcelle.";
+                        
+                        let analysis = `Sur la base des dernières données, **${name}** montre `;
+                        
+                        if (ndvi > 0.6) {
+                          analysis += `une végétation très dense et vigoureuse pour ${culture}. `;
+                        } else if (ndvi > 0.4) {
+                          analysis += `une vigueur satisfaisante, typique d'un stade de croissance actif. `;
+                        } else if (ndvi > 0.2) {
+                          analysis += `une activité chlorophyllienne modérée, ce qui peut indiquer une levée précoce ou un léger ralentissement de croissance. `;
+                        } else {
+                          analysis += `un indice de vigueur faible (NDVI < 0.2). `;
+                        }
+
+                        if (ndwi < 0.1) {
+                          analysis += `Attention : un stress hydrique est détecté (NDWI faible), une irrigation d'appoint est recommandée. `;
+                        } else if (ndwi > 0.3) {
+                          analysis += `Le taux d'humidité foliaire est optimal. `;
+                        }
+
+                        if (saviAvg && saviAvg < 0.15) {
+                          analysis += `Le sol semble très exposé, surveillez l'érosion ou le manque de couverture végétale. `;
+                        }
+
+                        return analysis;
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </ScrollArea>
           

@@ -146,19 +146,37 @@ const IndicesPage = () => {
   const handleExportCSV = () => {
     if (results.length === 0) return;
     
+    const escapeCsv = (value: string | number | null | undefined) => {
+      if (value == null) return "";
+      const text = String(value);
+      if (text.includes('"') || text.includes(";") || text.includes("\n")) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    };
+
+    const formatVal = (val: number | string | null | undefined) => {
+      if (val == null) return "";
+      if (typeof val === 'number') {
+        if (isNaN(val)) return "";
+        return String(val).replace(".", ",");
+      }
+      return String(val);
+    };
+
     // Header: Date, Parcel1, Parcel2...
-    const header = ["Date", ...results.map(r => r.nom)];
+    const header = ["Date", ...results.map(r => r.nom)].map(escapeCsv);
     
     // Rows: Merge by date
     const csvRows = chartData.map(row => {
       return [
         row.date,
-        ...results.map(r => row[r.parcelleId] ?? "")
-      ].join(",");
+        ...results.map(r => formatVal(row[r.parcelleId]))
+      ].map(escapeCsv).join(";");
     });
 
-    const csvContent = [header.join(","), ...csvRows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const csvContent = [header.join(";"), ...csvRows].join("\r\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;

@@ -98,7 +98,15 @@ export const ParcelleManager = () => {
     setPendingGeom(geom);
   };
 
-  const handleConfirmCreate = async (data: { nom: string; cultureType: string; proprietaire: string; datePlantation: string }) => {
+  const handleConfirmCreate = async (data: {
+    nom: string;
+    cultureType: string;
+    proprietaire: string;
+    datePlantation: string;
+    cultureEstimatedStage?: string;
+    cultureAgeYears?: number;
+    treeDensity?: number;
+  }) => {
     if (!pendingGeom) return;
     try {
       const surface = polygonAreaHa(pendingGeom);

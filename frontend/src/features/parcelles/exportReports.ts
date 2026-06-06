@@ -98,21 +98,32 @@ export function downloadParcelleCsv(details: ParcelleDetails): boolean {
   const escapeCsv = (value: string | number | null | undefined) => {
     if (value == null) return "";
     const text = String(value);
-    if (text.includes('"') || text.includes(",") || text.includes("\n")) {
+    if (text.includes('"') || text.includes(";") || text.includes("\n")) {
       return `"${text.replace(/"/g, '""')}"`;
     }
     return text;
   };
 
+  const formatVal = (val: number | null | undefined) => {
+    if (val == null || isNaN(val)) return "";
+    return String(val).replace(".", ",");
+  };
+
   const header = ["date", "ndvi", "ndwi", "precip_mm", "temp_c"];
   const lines = rows.map((row) =>
-    [row.date, row.ndvi ?? "", row.ndwi ?? "", row.precip ?? "", row.temp ?? ""]
+    [
+      row.date,
+      formatVal(row.ndvi),
+      formatVal(row.ndwi),
+      formatVal(row.precip),
+      formatVal(row.temp)
+    ]
       .map(escapeCsv)
-      .join(",")
+      .join(";")
   );
 
-  const csvContent = [header.join(","), ...lines].join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const csvContent = [header.join(";"), ...lines].join("\r\n");
+  const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

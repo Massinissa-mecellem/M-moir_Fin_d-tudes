@@ -65,6 +65,9 @@ export interface CreateParcellePayload {
   proprietaire: string;
   cultureType?: string;
   datePlantation?: string;
+  cultureEstimatedStage?: string;
+  cultureAgeYears?: number;
+  treeDensity?: number;
   surface?: number;
   geometry: ParcelleGeometry;
 }

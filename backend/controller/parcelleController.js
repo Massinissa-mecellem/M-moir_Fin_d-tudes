@@ -1,6 +1,7 @@
 const Parcelle = require('../models/Parcel');
 const geeService = require('../services/geeService');
 const { getParcelleWeather } = require('../services/weatherService');
+const cropCycleEngine = require('../services/cropCycleEngine');
 
 const toIsoDate = (value) => new Date(value).toISOString().split('T')[0];
 
@@ -44,6 +45,15 @@ exports.createParcelle = async (req, res) => {
         payload.userId = req.auth.userId;
         if (Object.prototype.hasOwnProperty.call(payload, 'datePlantation')) {
             payload.datePlantation = sanitizeDatePlantation(payload.datePlantation);
+        }
+
+        // Si une culture de type saisonnière a un stade initial estimé spécifique
+        if (payload.cultureType && payload.datePlantation && payload.cultureEstimatedStage) {
+            payload.datePlantation = cropCycleEngine.calculateEffectiveStartDate(
+                payload.cultureType,
+                payload.datePlantation,
+                payload.cultureEstimatedStage
+            );
         }
 
         // Vérification des doublons : empêcher le même agriculteur de créer la même parcelle
@@ -152,6 +162,24 @@ exports.getParcelleDetails = async (req, res) => {
             if (enrichedInfo.saviMoyen  == null) enrichedInfo.saviMoyen  = lastStat.savi  ?? null;
             if (enrichedInfo.gndviMoyen == null) enrichedInfo.gndviMoyen = lastStat.gndvi ?? null;
         }
+
+        // Calculer l'état phénologique et le diagnostic
+        const phenology = cropCycleEngine.calculateCurrentStage(
+            enrichedInfo.cultureType,
+            enrichedInfo.datePlantation,
+            enrichedInfo.cultureAgeYears,
+            enrichedInfo.treeDensity
+        );
+        const diagnostic = cropCycleEngine.generateDiagnostic(
+            enrichedInfo.cultureType,
+            phenology,
+            enrichedInfo.ndviMoyen,
+            enrichedInfo.ndwiMoyen
+        );
+
+        enrichedInfo.phenology = phenology;
+        enrichedInfo.diagnostic = diagnostic;
+
         res.json({ info: enrichedInfo, analytics: stats, latestSentinelImageDate });
     } catch (err) {
         console.error('[getParcelleDetails] Error:', err.message);
@@ -208,17 +236,32 @@ exports.getParcelleWeather = async (req, res) => {
 exports.updateParcelle = async (req, res) => {
   try {
     const payload = { ...req.body };
+    // Empêcher la modification de userId
+    delete payload.userId;
+
+    const existing = await Parcelle.findOne({ _id: req.params.id, userId: req.auth.userId });
+    if (!existing) return res.status(404).json({ error: 'Parcelle non trouvée ou accès refusé' });
+
     if (Object.prototype.hasOwnProperty.call(payload, 'datePlantation')) {
         payload.datePlantation = sanitizeDatePlantation(payload.datePlantation);
     }
-    // Empêcher la modification de userId
-    delete payload.userId;
+
+    // Réajuster si besoin la date de début de semis théorique compensée
+    if (payload.cultureType !== undefined || payload.datePlantation !== undefined || payload.cultureEstimatedStage !== undefined) {
+        const type = payload.cultureType !== undefined ? payload.cultureType : existing.cultureType;
+        const date = payload.datePlantation !== undefined ? payload.datePlantation : existing.datePlantation;
+        const stage = payload.cultureEstimatedStage !== undefined ? payload.cultureEstimatedStage : existing.cultureEstimatedStage;
+
+        if (type && date) {
+            payload.datePlantation = cropCycleEngine.calculateEffectiveStartDate(type, date, stage);
+        }
+    }
+
     const updated = await Parcelle.findOneAndUpdate(
         { _id: req.params.id, userId: req.auth.userId },
         payload,
         { new: true }
     );
-    if (!updated) return res.status(404).json({ error: 'Parcelle non trouvée ou accès refusé' });
     res.json(updated);
   } catch (err) { res.status(400).json({ error: err.message }); }
 };

@@ -19,6 +19,9 @@ export interface Parcelle {
   proprietaire: string;
   cultureType?: string;
   datePlantation?: string;
+  cultureEstimatedStage?: string;
+  cultureAgeYears?: number;
+  treeDensity?: number;
   status?: "ok" | "warning" | "critical";
   surface?: number;
   geometry: ParcelleGeometry;
@@ -29,6 +32,26 @@ export interface Parcelle {
   lastAnalyzedCaptureDate?: string;
   analytics?: AnalyticsPoint[];
   createdAt: string;
+  phenology?: {
+    isTree: boolean;
+    currentStage: string;
+    stageLabel: string;
+    progressPercent: number;
+    expectedNdviRange: [number, number];
+    expectedNdwiRange: [number, number];
+    description: string;
+    advice: string;
+    meta?: {
+      ageLabel?: string;
+      seasonLabel?: string;
+      densityLabel?: string;
+    };
+  };
+  diagnostic?: {
+    status: "ok" | "warning" | "critical" | "unknown";
+    statusLabel: string;
+    text: string;
+  };
 }
 
 export interface ParcelleDetails {
